@@ -7,20 +7,42 @@
       "Resource": "arn:aws:lambda:us-east-1:188174211009:function:PaparazziImageRegistrar",
       "ResultPath": "$.PaparazziImageRegistrarOutput",
       "OutputPath": "$",
+      "Next":"RegistrationPass"
+    },
+    "RegistrationPass":{
+      "Type":"Pass",
+      "Parameters": {
+        "imageId.$":"$.imageId",
+        "originalImagePath.$": "$.originalImagePath",
+        "imageName.$": "$.imageName"
+      },
+      "ResultPath":"$.OptimizationStateInputs",
+      "OutputPath":"$",
       "Next":"Optimization"
     },
     "Optimization": {
       "Type": "Task",
       "Resource": "arn:aws:lambda:us-east-1:188174211009:function:PaparazziImageOptimizer",
-      "InputPath": "$.PaparazziImageRegistrarOutput",
+      "InputPath": "$.OptimizationStateInputs",
       "ResultPath": "$.PaparazziImageOptimizerOutput",
       "OutputPath": "$",
+      "Next":"OptimizationPass"
+    },
+    "OptimizationPass": {
+      "Type":"Pass",
+      "Parameters": {
+        "imageId.$":"$.imageId",
+        "originalImagePath.$": "$.originalImagePath",
+        "imageName.$": "$.imageName"
+      },
+      "ResultPath":"$.AssociationStateInputs",
+      "OutputPath":"$",
       "Next":"Association"
     },
     "Association": {
       "Type": "Task",
       "Resource": "arn:aws:lambda:us-east-1:188174211009:function:PaparazziOptimizedImageAssociator",
-      "InputPath": "$.PaparazziImageOptimizerOutput",
+      "InputPath": "$.AssociationStateInputs",
       "ResultPath": "$.PaparazziImageAssociatorOutput",
       "OutputPath": "$",
       "End": true
