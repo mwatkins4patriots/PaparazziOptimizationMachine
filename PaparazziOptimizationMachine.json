@@ -1,8 +1,8 @@
 {
   "Comment": "An image optimizing workflow",
-  "StartAt": "ContextPassing",
+  "StartAt": "ContextInjection",
   "States": {
-    "ContextPassing": {
+    "ContextInjection": {
       "Type": "Pass",
       "Parameters": {
         "Execution.$": "$$.Execution.Id"
@@ -14,6 +14,13 @@
     "Registration": {
       "Type": "Task",
       "Resource": "arn:aws:lambda:us-east-1:188174211009:function:PaparazziImageRegistrar",
+      "Catch" : [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "RegistrarCatchAllFallback",
+          "ResultPath":"$.RegistrarGenericErrorReport"
+        }],
+      "TimeoutSeconds": 10,
       "ResultPath": "$.PaparazziImageRegistrarOutput",
       "OutputPath": "$",
       "Next":"RegistrationPass"
@@ -32,6 +39,23 @@
     "Optimization": {
       "Type": "Task",
       "Resource": "arn:aws:lambda:us-east-1:188174211009:function:PaparazziImageOptimizer",
+      "Retry": [ {
+        "ErrorEquals": ["States.ALL"],
+        "IntervalSeconds": 3,
+        "MaxAttempts": 3,
+        "BackoffRate": 3.0
+      } ],
+      "TimeoutSeconds": 10,
+      "Catch" : [{
+        "ErrorEquals": ["NodeTenError"],
+        "Next": "OptimizerNodeTenFallback",
+        "ResultPath":"$.OptimizerNodeTenErrorReport"
+      },
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "OptimizerCatchAllFallback",
+          "ResultPath":"$.OptimizerGenericErrorReport"
+        }],
       "InputPath": "$.OptimizationStateInputs",
       "ResultPath": "$.PaparazziImageOptimizerOutput",
       "OutputPath": "$",
@@ -42,7 +66,8 @@
       "Parameters": {
         "imageId.$":"$.imageId",
         "originalImagePath.$": "$.originalImagePath",
-        "imageName.$": "$.imageName"
+        "imageName.$": "$.imageName",
+        "optimizedImagePath.$": "$.PaparazziImageOptimizerOutput.optimizedImagePath"
       },
       "ResultPath":"$.AssociationStateInputs",
       "OutputPath":"$",
@@ -51,10 +76,73 @@
     "Association": {
       "Type": "Task",
       "Resource": "arn:aws:lambda:us-east-1:188174211009:function:PaparazziOptimizedImageAssociator",
+      "Catch" : [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "AssociatorCatchAllFallback",
+          "ResultPath":"$.AssociatorGenericErrorReport"
+        }],
+      "TimeoutSeconds": 10,
       "InputPath": "$.AssociationStateInputs",
       "ResultPath": "$.PaparazziImageAssociatorOutput",
       "OutputPath": "$",
       "End": true
+    },
+    "RegistrarCatchAllFallback":{
+      "Type": "Pass",
+      "Parameters" : {
+        "RegistrarErrorCause.$":"$.RegistrarGenericErrorReport.Cause"
+      },
+      "ResultPath": "$.RegistrarCatchAllOutput",
+      "OutputPath":"$",
+      "Next": "RegistrarGenericFailState"
+    },
+    "RegistrarGenericFailState": {
+      "Type": "Fail",
+      "Cause": "Registrar failed with generic exception catch",
+      "Error": "Generic Registrar Exception"
+    },
+    "OptimizerCatchAllFallback":{
+      "Type": "Pass",
+      "Parameters" : {
+        "OptimizerErrorCause.$":"$.OptimizerGenericErrorReport.Cause"
+      },
+      "ResultPath": "$.OptimizerCatchAllOutput",
+      "OutputPath":"$",
+      "Next": "OptimizerGenericFailState"
+    },
+    "OptimizerNodeTenFallback":{
+      "Type": "Pass",
+      "Parameters" : {
+        "OptimizerErrorCause.$":"$.OptimizerNodeTenErrorReport.Cause"
+      },
+      "ResultPath": "$.OptimizerNodeTenErrorOutput",
+      "OutputPath":"$",
+      "Next": "OptimizerNodeTenErrorFailState"
+    },
+    "OptimizerNodeTenErrorFailState": {
+      "Type": "Fail",
+      "Cause": "Optimizer failed because Lambda is running as Node 10, but has an incompatible library",
+      "Error": "Node Ten Optimizer Exception"
+    },
+    "OptimizerGenericFailState": {
+      "Type": "Fail",
+      "Cause": "Optimizer failed with generic exception catch",
+      "Error": "Generic Optimizer Exception"
+    },
+    "AssociatorCatchAllFallback":{
+      "Type": "Pass",
+      "Parameters" : {
+        "AssociatorErrorCause.$":"$.AssociatorGenericErrorReport.Cause"
+      },
+      "ResultPath": "$.AssociatorCatchAllOutput",
+      "OutputPath":"$",
+      "Next": "AssociatorGenericFailState"
+    },
+    "AssociatorGenericFailState": {
+      "Type": "Fail",
+      "Cause": "Associator failed with generic exception catch",
+      "Error": "Generic Associator Exception"
     }
   }
 }
